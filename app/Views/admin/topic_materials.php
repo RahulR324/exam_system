@@ -146,15 +146,31 @@
                                                     <strong><?= esc($material['material_title']) ?></strong>
                                                 </div>
                                             </td>
-                                            <td>
+                                           <td>
                                                 <?php if($material['material_type'] == 'youtube'): ?>
-                                                    <a href="<?= esc($material['youtube_url']) ?>" target="_blank" class="btn btn-sm btn-outline-success rounded-pill">
+
+                                                    <a href="<?= esc($material['youtube_url']) ?>"
+                                                        target="_blank"
+                                                        class="btn btn-sm btn-outline-success rounded-pill">
+                                                        <i class="fab fa-youtube"></i> Play
+                                                    </a>
+
+                                                <?php elseif($material['material_type'] == 'video'): ?>
+
+                                                    <a href="<?= base_url($material['file_path']) ?>"
+                                                        target="_blank"
+                                                        class="btn btn-sm btn-outline-success rounded-pill">
                                                         <i class="fas fa-play"></i> Play
                                                     </a>
-                                                <?php else: ?>
-                                                    <a href="<?= base_url($material['file_path']) ?>" target="_blank" class="btn btn-sm btn-outline-success rounded-pill">
+
+                                                <?php elseif($material['material_type'] == 'pdf'): ?>
+
+                                                    <a href="<?= base_url($material['file_path']) ?>"
+                                                        target="_blank"
+                                                        class="btn btn-sm btn-outline-success rounded-pill">
                                                         <i class="fas fa-eye"></i> Open
                                                     </a>
+
                                                 <?php endif; ?>
                                             </td>
                                             <td>
