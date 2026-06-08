@@ -1,0 +1,6 @@
+parameters:
+    paths:
+        - app
+        - public
+    excludePaths:
+        - app/Database/Migrations
