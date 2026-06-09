@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class CourseCategoryModel extends Model
+class CourseCategoryModel extends Base_model
 {
     protected $table = 'course_categories';
 
@@ -15,5 +13,9 @@ class CourseCategoryModel extends Model
         'description'
     ];
 
-    protected $returnType = 'array';
+
+
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }

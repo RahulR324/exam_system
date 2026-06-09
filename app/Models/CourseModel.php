@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class CourseModel extends Model
+class CourseModel extends Base_model
 {
     protected $table = 'courses';
 
@@ -18,5 +16,9 @@ class CourseModel extends Model
         'thumbnail'
     ];
 
-    protected $returnType = 'array';
+
+
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }

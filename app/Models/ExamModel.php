@@ -2,11 +2,10 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class ExamModel extends Model
+class ExamModel extends Base_model
 {
     protected $table = 'exams';
+
     protected $primaryKey = 'exam_id';
 
     protected $allowedFields = [
@@ -18,6 +17,7 @@ class ExamModel extends Model
         'duration'
     ];
 
-    protected $returnType = 'array';
-    protected $useTimestamps = false;
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }

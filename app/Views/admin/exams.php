@@ -120,9 +120,10 @@
                 <?php if (!empty($courses)): ?>
                     <?php foreach($courses as $course): ?>
                         <div class="mb-5">
-                            <div class="course-divider mb-4">
-                                <span class="course-pill"><?= esc($course['course_name']) ?></span>
-                            </div>
+                            <div class="cat-label">
+                            <span class="cat-label-text" style="font-size: 22px; font-weight: 500;"><?= esc($course['course_name']) ?></span>
+                            <div class="cat-divider-line"></div>
+                        </div>
 
                             <?php if (!empty($course['exams'])): ?>
                                 <div class="subject-grid">
@@ -152,7 +153,7 @@
                 <?php else: ?>
                     <div class="info-card text-center py-5">
                         <i class="fas fa-folder-open fs-1 text-muted mb-3"></i>
-                        <h5 class="text-muted">No courses or exams found</h5>
+                        <h5 class="text-muted">No exams found</h5>
                     </div>
                 <?php endif; ?>
 

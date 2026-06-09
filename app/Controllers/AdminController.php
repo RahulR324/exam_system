@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Controllers;
-
+use App\Models\Base_model;
 use App\Models\ExamModel;
 use App\Models\QuestionModel;
 use App\Models\StudentModel;
@@ -58,27 +58,27 @@ public function dashboard()
         return redirect()->to('/admin');
     }
 
-    $examModel = new \App\Models\ExamModel();
-    $studentModel = new \App\Models\StudentModel();
-    $courseModel = new \App\Models\CourseModel();
-    $questionModel = new \App\Models\QuestionModel();
-    $coursecategoryModel = new \App\Models\CourseCategoryModel();
+    $examModel            = new \App\Models\ExamModel();
+    $studentModel         = new \App\Models\StudentModel();
+    $courseModel          = new \App\Models\CourseModel();
+    $questionModel        = new \App\Models\QuestionModel();
+    $courseCategoryModel  = new \App\Models\CourseCategoryModel();
 
     $data = [
 
-        'examCount' => $examModel->countAllResults(),
+        'examCount'           => $examModel->getNumRows(),
 
-        'studentCount' => $studentModel->countAllResults(),
+        'studentCount'        => $studentModel->getNumRows(),
 
-        'courseCount' => $courseModel->countAllResults(),
+        'courseCount'         => $courseModel->getNumRows(),
 
-        'questionCount' => $questionModel->countAllResults(),
+        'questionCount'       => $questionModel->getNumRows(),
 
-        'coursecategorycount' =>$coursecategoryModel->countAllResults(),
-        
-        'recentStudents' => $studentModel
-        ->orderBy('student_id', 'DESC')
-        ->findAll(5)
+        'coursecategorycount' => $courseCategoryModel->getNumRows(),
+
+        'recentStudents'      => $studentModel
+                                    ->orderBy('student_id', 'DESC')
+                                    ->findAll(5)
 
     ];
 
@@ -92,25 +92,24 @@ public function courseCategories()
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $courseCategoryModel = new \App\Models\CourseCategoryModel();
 
     $search = $this->request->getGet('search');
 
-    $builder = $db->table('course_categories');
-
     if (!empty($search)) {
-        $builder->groupStart()
-                ->like('category_name', $search)
-                ->orLike('description', $search)
-                ->groupEnd();
+        $courseCategoryModel
+            ->groupStart()
+            ->like('category_name', $search)
+            ->orLike('description', $search)
+            ->groupEnd();
     }
 
-    $data['categories'] = $builder
+    $data = [
+        'categories' => $courseCategoryModel
                             ->orderBy('category_id', 'ASC')
-                            ->get()
-                            ->getResultArray();
-
-    $data['search'] = $search;
+                            ->findAll(),
+        'search'     => $search
+    ];
 
     return view('admin/course_categories', $data);
 }
@@ -118,31 +117,28 @@ public function courseCategories()
 // manage course category (both add and edit)
 public function manageCourseCategory()
 {
-    // 1. Unified Authentication Check
+    // Authentication Check
     if (!session()->get('admin_logged_in')) {
         return redirect()->to('/admin');
     }
 
-    // 2. Check if the form was submitted (POST request)
+    // Form Submit
     if ($this->request->getMethod() === 'POST') {
-        
-        // Optional but highly recommended: Add validation here
-        
+
         $categoryModel = new \App\Models\CourseCategoryModel();
 
         $data = [
-            'category_name' => $this->request->getPost('category_name'),
-            'description'   => $this->request->getPost('description')
+            'category_name' => trim($this->request->getPost('category_name')),
+            'description'   => trim($this->request->getPost('description'))
         ];
 
-        $categoryModel->insert($data);
+        $categoryModel->add($data);
 
         return redirect()
             ->to('/admin/course_categories')
             ->with('success', 'Course category created successfully');
     }
 
-    // 3. Default behavior: Just load the view (GET request)
     return view('admin/add_course_category');
 }
 
@@ -155,7 +151,7 @@ public function editCourseCategory($id)
 
     $categoryModel = new \App\Models\CourseCategoryModel();
 
-    // Handle form submission
+    // Handle Update
     if ($this->request->getMethod() === 'POST') {
 
         $data = [
@@ -163,14 +159,16 @@ public function editCourseCategory($id)
             'description'   => $this->request->getPost('description')
         ];
 
-        $categoryModel->update($id, $data);
+        $categoryModel->edit($data, [
+            'category_id' => $id
+        ]);
 
         return redirect()
             ->to('/admin/course_categories')
             ->with('success', 'Course category updated successfully');
     }
 
-    // Load category for edit form
+    // Fetch Category
     $data['category'] = $categoryModel->find($id);
 
     if (!$data['category']) {
@@ -213,20 +211,25 @@ public function courses()
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $categoryModel = new \App\Models\CourseCategoryModel();
+    $courseModel   = new \App\Models\CourseModel();
 
-    $data['categories'] = $db->table('course_categories')
-        ->orderBy('category_name', 'ASC')
-        ->get()
-        ->getResultArray();
+    // Get all categories
+    $categories = $categoryModel->get(
+        null,
+        '*',
+        ['category_name' => 'ASC']
+    )->getResultArray();
 
-    foreach ($data['categories'] as &$category) {
+    // Get courses under each category
+    foreach ($categories as &$category) {
 
-        $category['courses'] = $db->table('courses')
-            ->where('category_id', $category['category_id'])
-            ->get()
-            ->getResultArray();
+        $category['courses'] = $courseModel->get(
+            ['category_id' => $category['category_id']]
+        )->getResultArray();
     }
+
+    $data['categories'] = $categories;
 
     return view('admin/courses', $data);
 }
@@ -239,17 +242,16 @@ public function manageCourse()
     }
 
     $courseModel = new \App\Models\CourseModel();
+    $categoryModel = new \App\Models\CourseCategoryModel();
 
-    $db = \Config\Database::connect();
-
-    // POST
+    // POST Request
     if ($this->request->getMethod() === 'POST') {
 
         $thumbnail = $this->request->getFile('thumbnail');
 
         $thumbnailName = null;
 
-        if ($thumbnail && $thumbnail->isValid()) {
+        if ($thumbnail && $thumbnail->isValid() && !$thumbnail->hasMoved()) {
 
             $thumbnailName = $thumbnail->getRandomName();
 
@@ -267,18 +269,20 @@ public function manageCourse()
             'thumbnail'   => $thumbnailName
         ];
 
-        $courseModel->insert($data);
+        $courseModel->add($data);
 
         return redirect()
             ->to('/admin/courses')
             ->with('success', 'Course added successfully');
     }
 
-    // GET
-
-    $data['categories'] = $db->table('course_categories')
-        ->orderBy('category_name', 'ASC')
-        ->get()
+    // GET Request
+    $data['categories'] = $categoryModel
+        ->get(
+            null,
+            '*',
+            ['category_name' => 'ASC']
+        )
         ->getResultArray();
 
     return view('admin/add_course', $data);
@@ -292,8 +296,7 @@ public function editCourse($id)
     }
 
     $courseModel = new \App\Models\CourseModel();
-
-    $db = \Config\Database::connect();
+    $categoryModel = new \App\Models\CourseCategoryModel();
 
     // POST REQUEST
     if ($this->request->getMethod() === 'POST') {
@@ -328,7 +331,9 @@ public function editCourse($id)
             'thumbnail'   => $thumbnailName
         ];
 
-        $courseModel->update($id, $data);
+        $courseModel->edit($data, [
+            'course_id' => $id
+        ]);
 
         return redirect()
             ->to('/admin/courses')
@@ -340,16 +345,16 @@ public function editCourse($id)
     $data['course'] = $courseModel->find($id);
 
     if (!$data['course']) {
-
         return redirect()
             ->to('/admin/courses')
             ->with('error', 'Course not found');
     }
 
-    $data['categories'] = $db->table('course_categories')
-        ->orderBy('category_name', 'ASC')
-        ->get()
-        ->getResultArray();
+    $data['categories'] = $categoryModel->get(
+        null,
+        '*',
+        ['category_name' => 'ASC']
+    )->getResultArray();
 
     return view('admin/edit_course', $data);
 }
@@ -395,7 +400,9 @@ public function exams()
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $categoryModel = new \App\Models\CourseCategoryModel();
+    $courseModel   = new \App\Models\CourseModel();
+    $examModel     = new \App\Models\ExamModel();
 
     $selectedCategory = $this->request->getGet('category_id');
     $selectedCourse   = $this->request->getGet('course_id');
@@ -403,45 +410,58 @@ public function exams()
     $data['selectedCategory'] = $selectedCategory;
     $data['selectedCourse']   = $selectedCourse;
 
-    // Categories
-    $data['categories_filter'] = $db->table('course_categories')
-        ->orderBy('category_name', 'ASC')
-        ->get()
+    // Categories Filter
+    $data['categories_filter'] = $categoryModel
+        ->get(
+            null,
+            '*',
+            ['category_name' => 'ASC']
+        )
         ->getResultArray();
 
-    // Courses (filtered by category if selected)
-    $courseQuery = $db->table('courses');
+    // Courses Filter
+    $courseWhere = [];
 
     if (!empty($selectedCategory)) {
-        $courseQuery->where('category_id', $selectedCategory);
+        $courseWhere['category_id'] = $selectedCategory;
     }
 
-    $data['courses_filter'] = $courseQuery
-        ->orderBy('course_name', 'ASC')
-        ->get()
+    $data['courses_filter'] = $courseModel
+        ->get(
+            $courseWhere,
+            '*',
+            ['course_name' => 'ASC']
+        )
         ->getResultArray();
 
-    // Courses for display (same logic)
-    $courseQuery2 = $db->table('courses');
+    // Display Courses
+    $displayCourseWhere = [];
 
     if (!empty($selectedCategory)) {
-        $courseQuery2->where('category_id', $selectedCategory);
+        $displayCourseWhere['category_id'] = $selectedCategory;
     }
 
     if (!empty($selectedCourse)) {
-        $courseQuery2->where('course_id', $selectedCourse);
+        $displayCourseWhere['course_id'] = $selectedCourse;
     }
 
-    $data['courses'] = $courseQuery2
-        ->orderBy('course_name', 'ASC')
-        ->get()
+    $data['courses'] = $courseModel
+        ->get(
+            $displayCourseWhere,
+            '*',
+            ['course_name' => 'ASC']
+        )
         ->getResultArray();
 
+    // Exams under each course
     foreach ($data['courses'] as &$course) {
-        $course['exams'] = $db->table('exams')
-            ->where('course_id', $course['course_id'])
-            ->orderBy('exam_id', 'DESC')
-            ->get()
+
+        $course['exams'] = $examModel
+            ->get(
+                ['course_id' => $course['course_id']],
+                '*',
+                ['exam_id' => 'DESC']
+            )
             ->getResultArray();
     }
 
@@ -472,35 +492,32 @@ public function manageExam()
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
     $courseModel = new \App\Models\CourseModel();
+    $categoryModel = new \App\Models\CourseCategoryModel();
 
-    // GET: Load form
+    // GET Request
     if ($this->request->getMethod() === 'GET') {
 
-        $data['categories'] = $db->table('course_categories')
-            ->orderBy('category_name', 'ASC')
-            ->get()
-            ->getResultArray();
+        $data['categories'] = $categoryModel->getAll();
 
-        $data['courses'] = $courseModel->findAll();
+        $data['courses'] = $courseModel->getAll();
 
         return view('admin/add_exam', $data);
     }
 
-    // POST: Save exam
+    // POST Request
     $examModel = new \App\Models\ExamModel();
 
     $data = [
-        'course_id'   => $this->request->getPost('course_id'),
-        'title'       => $this->request->getPost('title'),
-        'date'        => $this->request->getPost('date'),
-        'start_time'  => $this->request->getPost('start_time'),
-        'end_time'    => $this->request->getPost('end_time'),
-        'duration'    => $this->request->getPost('duration'),
+        'course_id'  => $this->request->getPost('course_id'),
+        'title'      => $this->request->getPost('title'),
+        'date'       => $this->request->getPost('date'),
+        'start_time' => $this->request->getPost('start_time'),
+        'end_time'   => $this->request->getPost('end_time'),
+        'duration'   => $this->request->getPost('duration'),
     ];
 
-    $examModel->insert($data);
+    $examModel->add($data);
 
     return redirect()
         ->to('/admin/exams')
@@ -514,11 +531,10 @@ public function manageEditExam($id)
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
     $examModel = new \App\Models\ExamModel();
     $courseModel = new \App\Models\CourseModel();
 
-    // GET → load edit form
+    // GET → Load Edit Form
     if ($this->request->getMethod() === 'GET') {
 
         $data['exam'] = $examModel->find($id);
@@ -529,22 +545,28 @@ public function manageEditExam($id)
                 ->with('error', 'Exam not found');
         }
 
-        $data['courses'] = $courseModel->findAll();
+        $data['courses'] = $courseModel->get(
+            null,
+            '*',
+            ['course_name' => 'ASC']
+        )->getResultArray();
 
         return view('admin/edit_exam', $data);
     }
 
-    // POST → update exam
+    // POST → Update Exam
     $updateData = [
-        'course_id'   => $this->request->getPost('course_id'),
-        'title'       => $this->request->getPost('title'),
-        'date'        => $this->request->getPost('date'),
-        'start_time'  => $this->request->getPost('start_time'),
-        'end_time'    => $this->request->getPost('end_time'),
-        'duration'    => $this->request->getPost('duration'),
+        'course_id'  => $this->request->getPost('course_id'),
+        'title'      => $this->request->getPost('title'),
+        'date'       => $this->request->getPost('date'),
+        'start_time' => $this->request->getPost('start_time'),
+        'end_time'   => $this->request->getPost('end_time'),
+        'duration'   => $this->request->getPost('duration'),
     ];
 
-    $examModel->update($id, $updateData);
+    $examModel->edit($updateData, [
+        'exam_id' => $id
+    ]);
 
     return redirect()
         ->to('/admin/exams')
@@ -558,25 +580,24 @@ public function subjects($course_id)
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $courseModel = new \App\Models\CourseModel();
+    $subjectModel = new \App\Models\SubjectModel();
 
-    // Get course details
-    $data['course'] = $db->table('courses')
-        ->where('course_id', $course_id)
-        ->get()
-        ->getRowArray();
+    // Get Course Details
+    $data['course'] = $courseModel->find($course_id);
 
     if (!$data['course']) {
-        return redirect()->to('/admin/courses')
+        return redirect()
+            ->to('/admin/courses')
             ->with('error', 'Course not found');
     }
 
-    // Get subjects of this course
-    $data['subjects'] = $db->table('subjects')
-        ->where('course_id', $course_id)
-        ->orderBy('subject_name', 'ASC')
-        ->get()
-        ->getResultArray();
+    // Get Subjects
+    $data['subjects'] = $subjectModel->get(
+        ['course_id' => $course_id],
+        '*',
+        ['subject_name' => 'ASC']
+    )->getResultArray();
 
     return view('admin/subjects', $data);
 }
@@ -588,34 +609,31 @@ public function addSubject($course_id)
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $courseModel = new \App\Models\CourseModel();
+    $subjectModel = new \App\Models\SubjectModel();
 
-    // Get course info
-    $data['course'] = $db->table('courses')
-        ->where('course_id', $course_id)
-        ->get()
-        ->getRowArray();
+    // Get Course Info
+    $data['course'] = $courseModel->find($course_id);
 
     if (!$data['course']) {
-        return redirect()->to('/admin/courses')
+        return redirect()
+            ->to('/admin/courses')
             ->with('error', 'Course not found');
     }
 
     // HANDLE POST
     if ($this->request->getMethod() === 'POST') {
 
-        $subjectModel = new \App\Models\SubjectModel();
-
         $dataInsert = [
-            'course_id'     => $course_id,
-            'subject_name'  => $this->request->getPost('subject_name'),
-            'description'   => $this->request->getPost('description')
+            'course_id'    => $course_id,
+            'subject_name' => $this->request->getPost('subject_name'),
+            'description'  => $this->request->getPost('description')
         ];
 
-        $subjectModel->insert($dataInsert);
+        $subjectModel->add($dataInsert);
 
         return redirect()
-            ->to('/admin/subjects/'.$course_id)
+            ->to('/admin/subjects/' . $course_id)
             ->with('success', 'Subject added successfully');
     }
 
@@ -657,26 +675,26 @@ public function editSubject($subject_id)
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $subjectModel = new \App\Models\SubjectModel();
+    $courseModel  = new \App\Models\CourseModel();
 
-    // Get subject
-    $data['subject'] = $db->table('subjects')
-        ->where('subject_id', $subject_id)
-        ->get()
-        ->getRowArray();
+    // Get Subject
+    $data['subject'] = $subjectModel->get(
+        ['subject_id' => $subject_id]
+    )->getRowArray();
 
     if (!$data['subject']) {
-        return redirect()->to('/admin/courses')
+        return redirect()
+            ->to('/admin/courses')
             ->with('error', 'Subject not found');
     }
 
-    // Get course (for back button + context)
-    $data['course'] = $db->table('courses')
-        ->where('course_id', $data['subject']['course_id'])
-        ->get()
-        ->getRowArray();
+    // Get Course
+    $data['course'] = $courseModel->get(
+        ['course_id' => $data['subject']['course_id']]
+    )->getRowArray();
 
-    // POST update
+    // Update Subject
     if ($this->request->getMethod() === 'POST') {
 
         $updateData = [
@@ -684,11 +702,13 @@ public function editSubject($subject_id)
             'description'  => $this->request->getPost('description'),
         ];
 
-        $db->table('subjects')
-            ->where('subject_id', $subject_id)
-            ->update($updateData);
+        $subjectModel->edit(
+            $updateData,
+            ['subject_id' => $subject_id]
+        );
 
-        return redirect()->to('admin/subjects/' . $data['subject']['course_id'])
+        return redirect()
+            ->to('/admin/subjects/' . $data['subject']['course_id'])
             ->with('success', 'Subject updated successfully');
     }
 
@@ -702,38 +722,45 @@ public function topics($subject_id)
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $subjectModel = new \App\Models\SubjectModel();
+    $courseModel  = new \App\Models\CourseModel();
+    $topicModel   = new \App\Models\TopicModel();
 
-    // Get subject details
-    $data['subject'] = $db->table('subjects')
-        ->where('subject_id', $subject_id)
-        ->get()
-        ->getRowArray();
+    // Subject Details
+    $subject = $subjectModel->get(
+        ['subject_id' => $subject_id]
+    )->getRowArray();
 
-    if (!$data['subject']) {
-        return redirect()->to('/admin/courses')
+    if (!$subject) {
+        return redirect()
+            ->to('/admin/courses')
             ->with('error', 'Subject not found');
     }
 
-    // Get course (for breadcrumb / UI)
-    $data['course'] = $db->table('courses')
-        ->where('course_id', $data['subject']['course_id'])
-        ->get()
-        ->getRowArray();
+    $data['subject'] = $subject;
 
-    // Get topics
-    $data['topics'] = $db->table('topics')
-    ->select('topics.*, COUNT(topic_materials.material_id) as material_count')
-    ->join(
-        'topic_materials',
-        'topic_materials.topic_id = topics.topic_id',
-        'left'
-    )
-    ->where('topics.subject_id', $subject_id)
-    ->groupBy('topics.topic_id')
-    ->orderBy('topics.topic_id', 'ASC')
-    ->get()
-    ->getResultArray();
+    // Course Details
+    $data['course'] = $courseModel->get(
+        ['course_id' => $subject['course_id']]
+    )->getRowArray();
+
+    // Topics + Material Count
+    $data['topics'] = $topicModel->get_join(
+        [
+            [
+                'topic_materials',
+                'topic_materials.topic_id = topics.topic_id',
+                'left'
+            ]
+        ],
+        [
+            'topics.subject_id' => $subject_id
+        ],
+        'topics.*, COUNT(topic_materials.material_id) as material_count',
+        ['topics.topic_id' => 'ASC'],
+        null,
+        'topics.topic_id'
+    )->getResultArray();
 
     return view('admin/topics', $data);
 }
@@ -745,33 +772,35 @@ public function addTopic($subjectId)
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $subjectModel = new \App\Models\SubjectModel();
+    $topicModel   = new \App\Models\TopicModel();
 
-    // Get subject + course info
-    $data['subject'] = $db->table('subjects')
-        ->where('subject_id', $subjectId)
-        ->get()
-        ->getRowArray();
+    // Get Subject Info
+    $subject = $subjectModel->get(
+        ['subject_id' => $subjectId]
+    )->getRowArray();
 
-    if (!$data['subject']) {
-        return redirect()->to('/admin/courses')
+    if (!$subject) {
+        return redirect()
+            ->to('/admin/courses')
             ->with('error', 'Subject not found');
     }
 
-    $courseId = $data['subject']['course_id'];
+    $data['subject'] = $subject;
 
-    // Handle POST
+    // POST Request
     if ($this->request->getMethod() === 'POST') {
 
-        $topicModel = new \App\Models\TopicModel();
+        $topicData = [
+            'subject_id'  => $subjectId,
+            'topic_name'  => $this->request->getPost('topic_name'),
+            'description' => $this->request->getPost('description'),
+        ];
 
-        $topicModel->save([
-            'subject_id'   => $subjectId,
-            'topic_name'   => $this->request->getPost('topic_name'),
-            'description'  => $this->request->getPost('description'),
-        ]);
+        $topicModel->add($topicData);
 
-        return redirect()->to('admin/topics/' . $subjectId)
+        return redirect()
+            ->to('/admin/topics/' . $subjectId)
             ->with('success', 'Topic added successfully');
     }
 
@@ -812,14 +841,18 @@ public function editTopic($id)
 
     $topicModel = new \App\Models\TopicModel();
 
-    $topic = $topicModel->find($id);
+    // Get Topic
+    $topic = $topicModel->get([
+        'topic_id' => $id
+    ])->getRowArray();
 
     if (!$topic) {
-        return redirect()->to('/admin/courses')
-                         ->with('error', 'Topic not found');
+        return redirect()
+            ->to('/admin/courses')
+            ->with('error', 'Topic not found');
     }
 
-    // ✅ FIXED POST CHECK (IMPORTANT)
+    // Update Topic
     if ($this->request->getMethod(true) === 'POST') {
 
         $data = [
@@ -827,10 +860,13 @@ public function editTopic($id)
             'description' => $this->request->getPost('description'),
         ];
 
-        $topicModel->update($id, $data);
+        $topicModel->edit($data, [
+            'topic_id' => $id
+        ]);
 
-        return redirect()->to('/admin/topics/' . $topic['subject_id'])
-                         ->with('success', 'Topic updated successfully');
+        return redirect()
+            ->to('/admin/topics/' . $topic['subject_id'])
+            ->with('success', 'Topic updated successfully');
     }
 
     return view('admin/edit_topic', [
@@ -841,6 +877,10 @@ public function editTopic($id)
 //question bank page
 public function questionBanks($parentId = null)
 {
+    if (!session()->get('admin_logged_in')) {
+        return redirect()->to('/admin');
+    }
+
     $bankModel = new \App\Models\QuestionBankModel();
     $questionModel = new \App\Models\QuestionModel();
 
@@ -849,21 +889,26 @@ public function questionBanks($parentId = null)
     // SEARCH MODE
     if (!empty($search)) {
 
-        $questions = $questionModel
-            ->select('questions.*, question_banks.questionbank_name')
-            ->join(
-                'question_banks',
-                'question_banks.questionbank_id = questions.questionbank_id',
-                'left'
-            )
-            ->groupStart()
-                ->like('question_text', $search)
-                ->orLike('option_a', $search)
-                ->orLike('option_b', $search)
-                ->orLike('option_c', $search)
-                ->orLike('option_d', $search)
-            ->groupEnd()
-            ->findAll();
+        $questions = $questionModel->get_join(
+            [
+                [
+                    'question_banks',
+                    'question_banks.questionbank_id = questions.questionbank_id',
+                    'left'
+                ]
+            ],
+            [],
+            'questions.*, question_banks.questionbank_name'
+        )->getResultArray();
+
+        // Filter search manually
+        $questions = array_filter($questions, function ($question) use ($search) {
+            return stripos($question['question_text'], $search) !== false ||
+                   stripos($question['option_a'], $search) !== false ||
+                   stripos($question['option_b'], $search) !== false ||
+                   stripos($question['option_c'], $search) !== false ||
+                   stripos($question['option_d'], $search) !== false;
+        });
 
         return view('admin/question_banks', [
             'banks'      => [],
@@ -875,30 +920,38 @@ public function questionBanks($parentId = null)
         ]);
     }
 
-    // NORMAL MODE
-    $banks = $bankModel->where('parent_id', $parentId)->findAll();
+    // GET CHILD BANKS
+    $banks = $bankModel->get(
+        ['parent_id' => $parentId],
+        '*',
+        ['questionbank_name' => 'ASC']
+    )->getResultArray();
 
+    // GET QUESTIONS
     $questions = [];
 
     if ($parentId) {
-        $questions = $questionModel
-            ->where('questionbank_id', $parentId)
-            ->findAll();
+        $questions = $questionModel->get(
+            ['questionbank_id' => $parentId]
+        )->getResultArray();
     }
 
-    // Breadcrumb Path
+    // BREADCRUMB PATH
     $path = [];
     $tempId = $parentId;
 
     while ($tempId) {
 
-        $node = $bankModel->find($tempId);
+        $node = $bankModel->get(
+            ['questionbank_id' => $tempId]
+        )->getRowArray();
 
         if (!$node) {
             break;
         }
 
         array_unshift($path, $node);
+
         $tempId = $node['parent_id'];
     }
 
@@ -968,24 +1021,30 @@ public function addQuestionBank()
 
     $questionBankModel = new \App\Models\QuestionBankModel();
 
-    if ($this->request->is('post')) {
+    // POST REQUEST
+    if ($this->request->getMethod() === 'POST') {
 
         $parentId = $this->request->getPost('parent_id');
 
-        $questionBankModel->insert([
+        $data = [
             'questionbank_name' => $this->request->getPost('questionbank_name'),
             'parent_id'         => !empty($parentId) ? $parentId : null,
             'description'       => $this->request->getPost('description')
-        ]);
+        ];
+
+        $questionBankModel->add($data);
 
         return redirect()
             ->to('/admin/question_banks')
             ->with('success', 'Question Bank Added Successfully');
     }
 
-    $data['questionBanks'] = $questionBankModel
-                                ->orderBy('questionbank_name', 'ASC')
-                                ->findAll();
+    // GET REQUEST
+    $data['questionBanks'] = $questionBankModel->get(
+        null,
+        '*',
+        ['questionbank_name' => 'ASC']
+    )->getResultArray();
 
     return view('admin/add_question_bank', $data);
 }
@@ -999,7 +1058,10 @@ public function editQuestionBank($id)
 
     $questionBankModel = new \App\Models\QuestionBankModel();
 
-    $questionBank = $questionBankModel->find($id);
+    // Get Question Bank
+    $questionBank = $questionBankModel->get([
+        'questionbank_id' => $id
+    ])->getRowArray();
 
     if (!$questionBank) {
         return redirect()
@@ -1007,14 +1069,19 @@ public function editQuestionBank($id)
             ->with('error', 'Question Bank not found');
     }
 
-    if ($this->request->is('post')) {
+    // Handle Update
+    if ($this->request->getMethod() === 'POST') {
 
         $parentId = $this->request->getPost('parent_id');
 
-        $questionBankModel->update($id, [
+        $data = [
             'questionbank_name' => $this->request->getPost('questionbank_name'),
             'parent_id'         => !empty($parentId) ? $parentId : null,
             'description'       => $this->request->getPost('description')
+        ];
+
+        $questionBankModel->edit($data, [
+            'questionbank_id' => $id
         ]);
 
         return redirect()
@@ -1024,10 +1091,16 @@ public function editQuestionBank($id)
 
     $data['questionBank'] = $questionBank;
 
-    $data['questionBanks'] = $questionBankModel
-        ->where('questionbank_id !=', $id)
-        ->orderBy('questionbank_name', 'ASC')
-        ->findAll();
+    // Get Other Question Banks
+    $data['questionBanks'] = $questionBankModel->get(
+        [
+            'questionbank_id' => [
+                'not_in' => [$id]
+            ]
+        ],
+        '*',
+        ['questionbank_name' => 'ASC']
+    )->getResultArray();
 
     return view('admin/edit_question_bank', $data);
 }
@@ -1079,14 +1152,32 @@ public function deleteQuestionBank($id)
 //questions
 public function questions($questionbankId)
 {
+    if (!session()->get('admin_logged_in')) {
+        return redirect()->to('/admin');
+    }
+
     $questionBankModel = new \App\Models\QuestionBankModel();
     $questionModel = new \App\Models\QuestionModel();
 
-    $questionBank = $questionBankModel->find($questionbankId);
+    // Get Question Bank
+    $questionBank = $questionBankModel->get([
+        'questionbank_id' => $questionbankId
+    ])->getRowArray();
 
-    $questions = $questionModel
-        ->where('questionbank_id', $questionbankId)
-        ->findAll();
+    if (!$questionBank) {
+        return redirect()
+            ->to('/admin/question_banks')
+            ->with('error', 'Question Bank not found');
+    }
+
+    // Get Questions
+    $questions = $questionModel->get(
+        [
+            'questionbank_id' => $questionbankId
+        ],
+        '*',
+        ['question_id' => 'ASC']
+    )->getResultArray();
 
     return view('admin/questions', [
         'questionBank' => $questionBank,
@@ -1104,16 +1195,21 @@ public function addQuestion($questionbankId)
     $questionBankModel = new \App\Models\QuestionBankModel();
     $questionModel = new \App\Models\QuestionModel();
 
-    $questionBank = $questionBankModel->find($questionbankId);
+    // Get Question Bank
+    $questionBank = $questionBankModel->get([
+        'questionbank_id' => $questionbankId
+    ])->getRowArray();
 
     if (!$questionBank) {
-        return redirect()->to('/admin/question_banks')
+        return redirect()
+            ->to('/admin/question_banks')
             ->with('error', 'Question Bank not found');
     }
 
-    if ($this->request->getMethod(true) === 'POST') {
+    // Handle Form Submission
+    if ($this->request->getMethod() === 'POST') {
 
-        $questionModel->insert([
+        $questionModel->add([
             'questionbank_id' => $questionbankId,
             'question_text'   => $this->request->getPost('question_text'),
             'option_a'        => $this->request->getPost('option_a'),
@@ -1124,7 +1220,8 @@ public function addQuestion($questionbankId)
             'explanation'     => $this->request->getPost('explanation'),
         ]);
 
-        return redirect()->to('/admin/questions/' . $questionbankId)
+        return redirect()
+            ->to('/admin/questions/' . $questionbankId)
             ->with('success', 'Question added successfully');
     }
 
@@ -1143,37 +1240,44 @@ public function editQuestion($questionId)
     $questionModel = new \App\Models\QuestionModel();
     $questionBankModel = new \App\Models\QuestionBankModel();
 
-    $question = $questionModel->find($questionId);
+    // Get Question
+    $question = $questionModel->get([
+        'question_id' => $questionId
+    ])->getRowArray();
 
     if (!$question) {
         return redirect()->back()
             ->with('error', 'Question not found');
     }
 
-    $questionBank = $questionBankModel
-        ->find($question['questionbank_id']);
+    // Get Question Bank
+    $questionBank = $questionBankModel->get([
+        'questionbank_id' => $question['questionbank_id']
+    ])->getRowArray();
 
-    if ($this->request->is('post')) {
+    // Update Question
+    if ($this->request->getMethod() === 'POST') {
 
-    $questionModel->update($questionId, [
-        'question_text'  => $this->request->getPost('question_text'),
-        'option_a'       => $this->request->getPost('option_a'),
-        'option_b'       => $this->request->getPost('option_b'),
-        'option_c'       => $this->request->getPost('option_c'),
-        'option_d'       => $this->request->getPost('option_d'),
-        'correct_answer' => $this->request->getPost('correct_answer'),
-        'explanation'    => $this->request->getPost('explanation')
-    ]);
+        $questionModel->edit([
+            'question_text'  => $this->request->getPost('question_text'),
+            'option_a'       => $this->request->getPost('option_a'),
+            'option_b'       => $this->request->getPost('option_b'),
+            'option_c'       => $this->request->getPost('option_c'),
+            'option_d'       => $this->request->getPost('option_d'),
+            'correct_answer' => $this->request->getPost('correct_answer'),
+            'explanation'    => $this->request->getPost('explanation')
+        ], [
+            'question_id' => $questionId
+        ]);
 
-    return redirect()->to('/admin/question_banks/' . $question['questionbank_id'])
-                     ->with('success', 'Question updated successfully');
-}
+        return redirect()
+            ->to('/admin/questions/' . $question['questionbank_id'])
+            ->with('success', 'Question updated successfully');
+    }
 
     return view('admin/edit_question', [
-
-        'question'      => $question,
-        'questionBank'  => $questionBank
-
+        'question'     => $question,
+        'questionBank' => $questionBank
     ]);
 }
 
@@ -1214,9 +1318,11 @@ public function viewStudents()
 
     $studentModel = new \App\Models\StudentModel();
 
-    $students = $studentModel
-        ->orderBy('student_id', 'ASC')
-        ->findAll();
+    $students = $studentModel->get(
+        null,
+        '*',
+        ['student_id' => 'ASC']
+    )->getResultArray();
 
     return view('admin/view_students', [
         'students' => $students
@@ -1234,25 +1340,24 @@ public function addStudent()
 
     if ($this->request->is('post')) {
 
-        $studentModel->insert([
+        $studentModel->add([
 
             'name'     => $this->request->getPost('name'),
             'email'    => $this->request->getPost('email'),
             'phone'    => $this->request->getPost('phone'),
 
-            // password encrypted
-            'password' => password_hash(
-                $this->request->getPost('password'),
-                PASSWORD_DEFAULT
+            'password' => $studentModel->password_hash(
+                $this->request->getPost('password')
             )
 
         ]);
 
-        return redirect()->to('/admin/view_students')
-                         ->with(
-                             'success',
-                             'Student added successfully'
-                         );
+        return redirect()
+            ->to('/admin/view_students')
+            ->with(
+                'success',
+                'Student added successfully'
+            );
     }
 
     return view('admin/add_student');
@@ -1268,11 +1373,14 @@ public function editStudent($studentId)
 
     $studentModel = new \App\Models\StudentModel();
 
-    $student = $studentModel->find($studentId);
+    $student = $studentModel->get([
+        'student_id' => $studentId
+    ])->getRowArray();
 
     if (!$student) {
-        return redirect()->to('/admin/view_students')
-                         ->with('error', 'Student not found');
+        return redirect()
+            ->to('/admin/view_students')
+            ->with('error', 'Student not found');
     }
 
     if ($this->request->getMethod() === 'POST') {
@@ -1288,19 +1396,24 @@ public function editStudent($studentId)
         // Update password only if entered
         if (!empty($this->request->getPost('password'))) {
 
-            $data['password'] = password_hash(
-                $this->request->getPost('password'),
-                PASSWORD_DEFAULT
+            $data['password'] = $studentModel->password_hash(
+                $this->request->getPost('password')
             );
         }
 
-        $studentModel->update($studentId, $data);
+        $studentModel->edit(
+            $data,
+            [
+                'student_id' => $studentId
+            ]
+        );
 
-        return redirect()->to('/admin/view_students')
-                         ->with(
-                             'success',
-                             'Student updated successfully'
-                         );
+        return redirect()
+            ->to('/admin/view_students')
+            ->with(
+                'success',
+                'Student updated successfully'
+            );
     }
 
     return view('admin/edit_student', [
@@ -1344,20 +1457,32 @@ public function viewStudentCourses()
         return redirect()->to('/admin');
     }
 
-    $db = \Config\Database::connect();
+    $studentCourseModel = new \App\Models\StudentCourseModel();
 
-    $assignedCourses = $db->table('student_courses sc')
-        ->select('
-            sc.*,
-            s.name as student_name,
-            s.email,
-            c.course_name
-        ')
-        ->join('students s', 's.student_id = sc.student_id')
-        ->join('courses c', 'c.course_id = sc.course_id')
-        ->orderBy('sc.student_course_id', 'ASC')
-        ->get()
-        ->getResultArray();
+    $joins = [
+        [
+            'students',
+            'students.student_id = student_courses.student_id',
+            'left'
+        ],
+        [
+            'courses',
+            'courses.course_id = student_courses.course_id',
+            'left'
+        ]
+    ];
+
+    $assignedCourses = $studentCourseModel->get_join(
+        $joins,
+        [],
+        '
+            student_courses.*,
+            students.name as student_name,
+            students.email,
+            courses.course_name
+        ',
+        ['student_courses.student_course_id' => 'ASC']
+    )->getResultArray();
 
     return view('admin/view_student_courses', [
         'assignedCourses' => $assignedCourses
@@ -1435,15 +1560,14 @@ public function editStudentCourse($id)
     $studentModel = new \App\Models\StudentModel();
     $courseModel = new \App\Models\CourseModel();
 
-    $assignment = $studentCourseModel->find($id);
+    $assignment = $studentCourseModel->get([
+        'student_course_id' => $id
+    ])->getRowArray();
 
     if (!$assignment) {
-
-        return redirect()->to('/admin/view_student_courses')
-                         ->with(
-                             'error',
-                             'Assigned course not found'
-                         );
+        return redirect()
+            ->to('/admin/view_student_courses')
+            ->with('error', 'Assigned course not found');
     }
 
     if ($this->request->is('post')) {
@@ -1453,44 +1577,49 @@ public function editStudentCourse($id)
 
         if (!empty($completionDate) && $completionDate < $assignedDate) {
 
-            return redirect()->back()
-                             ->withInput()
-                             ->with(
-                                 'error',
-                                 'Completion date cannot be earlier than Assigned date'
-                             );
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with(
+                    'error',
+                    'Completion date cannot be earlier than Assigned date'
+                );
         }
 
-        $studentCourseModel->update($id, [
-
-            'student_id' => $this->request->getPost('student_id'),
-
-            'course_id' => $this->request->getPost('course_id'),
-
-            'assigned_date' => $assignedDate,
-
-            'completion_date' => $completionDate,
-
-            'progress' => $this->request->getPost('progress'),
-
-            'completed_status' => $this->request->getPost('completed_status')
-
+        $studentCourseModel->edit([
+            'student_id'        => $this->request->getPost('student_id'),
+            'course_id'         => $this->request->getPost('course_id'),
+            'assigned_date'     => $assignedDate,
+            'completion_date'   => $completionDate,
+            'progress'          => $this->request->getPost('progress'),
+            'completed_status'  => $this->request->getPost('completed_status')
+        ], [
+            'student_course_id' => $id
         ]);
 
-        return redirect()->to('/admin/view_student_courses')
-                         ->with(
-                             'success',
-                             'Assigned course updated successfully'
-                         );
+        return redirect()
+            ->to('/admin/view_student_courses')
+            ->with(
+                'success',
+                'Assigned course updated successfully'
+            );
     }
 
     return view('admin/edit_student_course', [
 
         'assignment' => $assignment,
 
-        'students' => $studentModel->findAll(),
+        'students' => $studentModel->get(
+            null,
+            '*',
+            ['name' => 'ASC']
+        )->getResultArray(),
 
-        'courses' => $courseModel->findAll()
+        'courses' => $courseModel->get(
+            null,
+            '*',
+            ['course_name' => 'ASC']
+        )->getResultArray()
 
     ]);
 }
@@ -1528,18 +1657,30 @@ public function deleteStudentCourse($id)
 //view topic materials page
 public function topicMaterials($topicId)
 {
+    if (!session()->get('admin_logged_in')) {
+        return redirect()->to('/admin');
+    }
+
     $topicModel = new \App\Models\TopicModel();
     $materialModel = new \App\Models\TopicMaterialModel();
 
-    $topic = $topicModel->find($topicId);
+    $topic = $topicModel->get([
+        'topic_id' => $topicId
+    ])->getRowArray();
 
     if (!$topic) {
         throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
     }
 
-    $materials = $materialModel
-        ->where('topic_id', $topicId)
-        ->findAll();
+    $materials = $materialModel->get(
+        [
+            'topic_id' => $topicId
+        ],
+        '*',
+        [
+            'material_id' => 'ASC'
+        ]
+    )->getResultArray();
 
     return view('admin/topic_materials', [
         'topic'     => $topic,
@@ -1551,10 +1692,16 @@ public function topicMaterials($topicId)
 // view the add material page
 public function addMaterial($topicId)
 {
+    if (!session()->get('admin_logged_in')) {
+        return redirect()->to('/admin');
+    }
+
     $topicModel = new \App\Models\TopicModel();
     $materialModel = new \App\Models\TopicMaterialModel();
 
-    $topic = $topicModel->find($topicId);
+    $topic = $topicModel->get([
+        'topic_id' => $topicId
+    ])->getRowArray();
 
     if (!$topic) {
         return redirect()->back();
@@ -1571,53 +1718,52 @@ public function addMaterial($topicId)
             'material_type'  => $type
         ];
 
-        // YouTube
+        // YouTube Material
         if ($type === 'youtube') {
 
             $data['youtube_url'] =
                 $this->request->getPost('youtube_url');
 
-            $materialModel->insert($data);
+            $materialModel->add($data);
         }
 
-        // PDF / MP4
+        // PDF / Video Material
         else {
 
-        $file = $this->request->getFile('material_file');
+            $file = $this->request->getFile('material_file');
 
-        if ($file && $file->isValid() && !$file->hasMoved()) {
+            if ($file && $file->isValid() && !$file->hasMoved()) {
 
-        $newName = $file->getRandomName();
+                $newName = $file->getRandomName();
 
-        // Decide folder based on material type
-        if ($type == 'pdf') {
+                // Folder based on type
+                if ($type == 'pdf') {
 
-            $uploadPath = FCPATH . 'uploads/materials/pdfs/';
-            $dbPath     = 'uploads/materials/pdfs/' . $newName;
+                    $uploadPath = FCPATH . 'uploads/materials/pdfs/';
+                    $dbPath     = 'uploads/materials/pdfs/' . $newName;
 
-        } elseif ($type == 'video') {
+                } elseif ($type == 'video') {
 
-            $uploadPath = FCPATH . 'uploads/materials/videos/';
-            $dbPath     = 'uploads/materials/videos/' . $newName;
+                    $uploadPath = FCPATH . 'uploads/materials/videos/';
+                    $dbPath     = 'uploads/materials/videos/' . $newName;
 
-        } else {
+                } else {
 
-            $uploadPath = FCPATH . 'uploads/materials/';
-            $dbPath     = 'uploads/materials/' . $newName;
+                    $uploadPath = FCPATH . 'uploads/materials/';
+                    $dbPath     = 'uploads/materials/' . $newName;
+                }
+
+                if (!is_dir($uploadPath)) {
+                    mkdir($uploadPath, 0777, true);
+                }
+
+                $file->move($uploadPath, $newName);
+
+                $data['file_path'] = $dbPath;
+
+                $materialModel->add($data);
+            }
         }
-
-        // Create folder if not exists
-        if (!is_dir($uploadPath)) {
-            mkdir($uploadPath, 0777, true);
-        }
-
-        $file->move($uploadPath, $newName);
-
-        $data['file_path'] = $dbPath;
-
-        $materialModel->insert($data);
-    }
-    }
 
         session()->setFlashdata(
             'success',
@@ -1625,7 +1771,7 @@ public function addMaterial($topicId)
         );
 
         return redirect()->to(
-            base_url('admin/topic_materials/'.$topicId)
+            base_url('admin/topic_materials/' . $topicId)
         );
     }
 
@@ -1637,16 +1783,25 @@ public function addMaterial($topicId)
 //edit material page
 public function editMaterial($materialId)
 {
+    if (!session()->get('admin_logged_in')) {
+        return redirect()->to('/admin');
+    }
+
     $materialModel = new \App\Models\TopicMaterialModel();
     $topicModel    = new \App\Models\TopicModel();
 
-    $material = $materialModel->find($materialId);
+    $material = $materialModel->get([
+        'material_id' => $materialId
+    ])->getRowArray();
 
     if (!$material) {
-        return redirect()->back();
+        return redirect()->back()
+            ->with('error', 'Material not found');
     }
 
-    $topic = $topicModel->find($material['topic_id']);
+    $topic = $topicModel->get([
+        'topic_id' => $material['topic_id']
+    ])->getRowArray();
 
     if ($this->request->getMethod() === 'POST') {
 
@@ -1658,14 +1813,8 @@ public function editMaterial($materialId)
             'material_type'  => $type
         ];
 
-        /*
-        |--------------------------------------------------------------------------
-        | YOUTUBE
-        |--------------------------------------------------------------------------
-        */
         if ($type === 'youtube') {
 
-            // Delete old uploaded file if exists
             if (!empty($material['file_path'])) {
 
                 $oldFile = FCPATH . $material['file_path'];
@@ -1675,24 +1824,15 @@ public function editMaterial($materialId)
                 }
             }
 
-            $data['youtube_url'] =
-                $this->request->getPost('youtube_url');
+            $data['youtube_url'] = $this->request->getPost('youtube_url');
+            $data['file_path']   = null;
 
-            $data['file_path'] = null;
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | PDF / VIDEO
-        |--------------------------------------------------------------------------
-        */
-        else {
+        } else {
 
             $file = $this->request->getFile('material_file');
 
             if ($file && $file->isValid() && !$file->hasMoved()) {
 
-                // Delete old file if exists
                 if (!empty($material['file_path'])) {
 
                     $oldFile = FCPATH . $material['file_path'];
@@ -1706,43 +1846,25 @@ public function editMaterial($materialId)
 
                 if ($type == 'pdf') {
 
-                    $uploadPath =
-                        FCPATH . 'uploads/materials/pdfs/';
-
-                    $dbPath =
-                        'uploads/materials/pdfs/' . $newName;
+                    $uploadPath = FCPATH . 'uploads/materials/pdfs/';
+                    $dbPath     = 'uploads/materials/pdfs/' . $newName;
 
                 } elseif ($type == 'video') {
 
-                    $uploadPath =
-                        FCPATH . 'uploads/materials/videos/';
-
-                    $dbPath =
-                        'uploads/materials/videos/' . $newName;
+                    $uploadPath = FCPATH . 'uploads/materials/videos/';
+                    $dbPath     = 'uploads/materials/videos/' . $newName;
 
                 } else {
 
-                    $uploadPath =
-                        FCPATH . 'uploads/materials/';
-
-                    $dbPath =
-                        'uploads/materials/' . $newName;
+                    $uploadPath = FCPATH . 'uploads/materials/';
+                    $dbPath     = 'uploads/materials/' . $newName;
                 }
 
-                // Create folder if missing
                 if (!is_dir($uploadPath)) {
-
-                    mkdir(
-                        $uploadPath,
-                        0777,
-                        true
-                    );
+                    mkdir($uploadPath, 0777, true);
                 }
 
-                $file->move(
-                    $uploadPath,
-                    $newName
-                );
+                $file->move($uploadPath, $newName);
 
                 $data['file_path'] = $dbPath;
             }
@@ -1750,29 +1872,22 @@ public function editMaterial($materialId)
             $data['youtube_url'] = null;
         }
 
-        $materialModel->update(
-            $materialId,
-            $data
-        );
+        $materialModel->edit($data, [
+            'material_id' => $materialId
+        ]);
 
         return redirect()->to(
-            base_url(
-                'admin/topic_materials/' .
-                $material['topic_id']
-            )
+            '/admin/topic_materials/' . $material['topic_id']
         )->with(
             'success',
             'Material updated successfully.'
         );
     }
 
-    return view(
-        'admin/edit_material',
-        [
-            'material' => $material,
-            'topic'    => $topic
-        ]
-    );
+    return view('admin/edit_material', [
+        'material' => $material,
+        'topic'    => $topic
+    ]);
 }
 
 public function deleteMaterial($materialId)

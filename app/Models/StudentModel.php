@@ -2,15 +2,11 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class StudentModel extends Model
+class StudentModel extends Base_model
 {
     protected $table = 'students';
 
     protected $primaryKey = 'student_id';
-
-    protected $returnType = 'array';
 
     protected $allowedFields = [
         'name',
@@ -19,5 +15,9 @@ class StudentModel extends Model
         'password'
     ];
 
-    protected $useTimestamps = true;
+
+
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }

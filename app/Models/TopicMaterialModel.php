@@ -2,17 +2,11 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class TopicMaterialModel extends Model
+class TopicMaterialModel extends Base_model
 {
     protected $table = 'topic_materials';
 
     protected $primaryKey = 'material_id';
-
-    protected $returnType = 'array';
-
-    protected $useTimestamps = true;
 
     protected $allowedFields = [
         'topic_id',
@@ -22,4 +16,9 @@ class TopicMaterialModel extends Model
         'file_path',
         'youtube_url'
     ];
+
+
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }

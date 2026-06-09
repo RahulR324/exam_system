@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class SubjectModel extends Model
+class SubjectModel extends Base_model
 {
     protected $table = 'subjects';
 
@@ -16,5 +14,9 @@ class SubjectModel extends Model
         'description'
     ];
 
-    protected $returnType = 'array';
+
+
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }

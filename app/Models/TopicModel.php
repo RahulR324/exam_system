@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class TopicModel extends Model
+class TopicModel extends Base_model
 {
     protected $table = 'topics';
 
@@ -16,5 +14,9 @@ class TopicModel extends Model
         'description'
     ];
 
-    protected $returnType = 'array';
+
+
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }

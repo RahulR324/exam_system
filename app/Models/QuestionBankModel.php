@@ -2,15 +2,11 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class QuestionBankModel extends Model
+class QuestionBankModel extends Base_model
 {
     protected $table = 'question_banks';
 
     protected $primaryKey = 'questionbank_id';
-
-    protected $returnType = 'array';
 
     protected $allowedFields = [
         'questionbank_name',
@@ -18,5 +14,8 @@ class QuestionBankModel extends Model
         'description'
     ];
 
-    protected $useTimestamps = false;
+
+    protected $useSoftDeletes = false;
+
+    protected $softDelete = false;
 }
