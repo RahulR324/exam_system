@@ -492,15 +492,23 @@ public function manageExam()
         return redirect()->to('/admin');
     }
 
-    $courseModel = new \App\Models\CourseModel();
+    $courseModel   = new \App\Models\CourseModel();
     $categoryModel = new \App\Models\CourseCategoryModel();
 
     // GET Request
     if ($this->request->getMethod() === 'GET') {
 
-        $data['categories'] = $categoryModel->getAll();
+        $data['categories'] = $categoryModel->get(
+            null,
+            '*',
+            ['category_name' => 'ASC']
+        )->getResultArray();
 
-        $data['courses'] = $courseModel->getAll();
+        $data['courses'] = $courseModel->get(
+            null,
+            '*',
+            ['course_name' => 'ASC']
+        )->getResultArray();
 
         return view('admin/add_exam', $data);
     }
@@ -514,7 +522,7 @@ public function manageExam()
         'date'       => $this->request->getPost('date'),
         'start_time' => $this->request->getPost('start_time'),
         'end_time'   => $this->request->getPost('end_time'),
-        'duration'   => $this->request->getPost('duration'),
+        'duration'   => $this->request->getPost('duration')
     ];
 
     $examModel->add($data);
