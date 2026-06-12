@@ -17,6 +17,7 @@ class ExamModel extends Base_model
         'duration'
     ];
 
+    protected $useTimestamps = true;
     protected $useSoftDeletes = false;
 
     protected $softDelete = false;

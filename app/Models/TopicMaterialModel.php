@@ -17,6 +17,7 @@ class TopicMaterialModel extends Base_model
         'youtube_url'
     ];
 
+    protected $useTimestamps = true;
 
     protected $useSoftDeletes = false;
 

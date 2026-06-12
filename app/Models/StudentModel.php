@@ -12,11 +12,12 @@ class StudentModel extends Base_model
         'name',
         'email',
         'phone',
-        'password'
+        'password',
+        'created_at',
+        'updated_at'
     ];
 
-
-
+    protected $useTimestamps = true;
     protected $useSoftDeletes = false;
 
     protected $softDelete = false;

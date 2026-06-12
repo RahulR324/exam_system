@@ -17,7 +17,7 @@ class CourseModel extends Base_model
     ];
 
 
-
+    protected $useTimestamps = true;
     protected $useSoftDeletes = false;
 
     protected $softDelete = false;

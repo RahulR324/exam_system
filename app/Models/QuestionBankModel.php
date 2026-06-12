@@ -14,6 +14,7 @@ class QuestionBankModel extends Base_model
         'description'
     ];
 
+    protected $useTimestamps = true;
 
     protected $useSoftDeletes = false;
 
